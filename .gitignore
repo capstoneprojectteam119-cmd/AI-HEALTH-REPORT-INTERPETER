@@ -1,0 +1,53 @@
+# Environment files and secrets
+.env
+.env.*
+!.env.example
+**/.env
+**/.env.*
+!**/.env.example
+
+# Clerk
+.clerk/
+
+# Python
+venv/
+.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+
+# Node
+node_modules/
+frontend/node_modules/
+
+# Build files
+frontend/dist/
+dist/
+build/
+
+# Medical report uploads
+backend/uploads/
+uploads/
+
+# Backups
+backups/
+*.bak
+
+# Logs
+*.log
+
+# macOS
+.DS_Store
+.localized
+
+# Editors
+.vscode/
+.idea/
+
+# Temporary runtime files
+logs.txt
+tmp/
+
+# Local backup and test copies
+*_backup.py
+*_tested.py

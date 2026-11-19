@@ -1,0 +1,144 @@
+[
+  {
+    "id": "glucose",
+    "topic": "Fasting Plasma Glucose",
+    "keywords": [
+      "fasting plasma glucose",
+      "fasting glucose",
+      "blood glucose",
+      "fbs",
+      "glucose"
+    ],
+    "title": "Understanding fasting blood glucose",
+    "content": "Fasting blood glucose measures the amount of glucose in the blood after fasting. Results are interpreted using the laboratory's reference range and the clinical context. A result above the laboratory range can warrant follow-up, but a single result does not by itself establish a diagnosis.",
+    "source": "CDC"
+  },
+  {
+    "id": "hba1c",
+    "topic": "HbA1c",
+    "keywords": [
+      "glycated haemoglobin",
+      "glycated hemoglobin",
+      "hba1c",
+      "a1c"
+    ],
+    "title": "Understanding HbA1c",
+    "content": "HbA1c measures the average blood glucose level over approximately the previous 2 to 3 months. It is commonly used to assess long-term blood glucose levels. HbA1c is interpreted together with the clinical situation and other relevant testing.",
+    "source": "CDC"
+  },
+  {
+    "id": "cholesterol",
+    "topic": "Cholesterol",
+    "keywords": [
+      "hdl cholesterol",
+      "ldl cholesterol",
+      "total cholesterol",
+      "triglycerides",
+      "vldl cholesterol",
+      "hdl",
+      "ldl"
+    ],
+    "title": "Understanding cholesterol results",
+    "content": "A lipid profile commonly includes LDL cholesterol, HDL cholesterol, total cholesterol and triglycerides. LDL and HDL have different roles in cardiovascular health. Cholesterol results are interpreted together rather than as isolated numbers, along with factors such as age, family history and other health information.",
+    "source": "CDC"
+  },
+  {
+    "id": "rdw",
+    "topic": "RDW",
+    "keywords": [
+      "rdw",
+      "rdw cv",
+      "red cell distribution width"
+    ],
+    "title": "Understanding RDW",
+    "content": "RDW describes variation in the size of red blood cells. An increased RDW means there is greater variation in red-cell size. It is generally interpreted together with other blood-count measurements rather than being used alone to determine a condition.",
+    "source": "MedlinePlus"
+  },
+  {
+    "id": "bilirubin",
+    "topic": "Bilirubin",
+    "keywords": [
+      "bilirubin",
+      "total bilirubin",
+      "direct bilirubin",
+      "indirect bilirubin"
+    ],
+    "title": "Understanding bilirubin",
+    "content": "Bilirubin is produced when red blood cells are broken down and is processed by the liver. Laboratory reports may provide total, direct and indirect bilirubin measurements. Abnormal bilirubin results are generally interpreted together with other liver-related tests and the patient's clinical information.",
+    "source": "MedlinePlus"
+  },
+  {
+    "id": "kidney",
+    "topic": "Kidney-related laboratory tests",
+    "keywords": [
+      "creatinine",
+      "urea",
+      "egfr",
+      "kidney function"
+    ],
+    "title": "Understanding kidney-related blood tests",
+    "content": "Creatinine is commonly used as a marker when assessing kidney filtration. Creatinine alone does not provide a complete picture of kidney function, so healthcare professionals may consider it together with estimated glomerular filtration rate and other clinical information.",
+    "source": "NIDDK"
+  },
+  {
+    "id": "white_blood_cells",
+    "topic": "White blood cells",
+    "keywords": [
+      "wbc",
+      "tlc",
+      "total leucocytes count",
+      "total leukocyte count",
+      "neutrophils",
+      "lymphocytes",
+      "monocytes",
+      "eosinophils",
+      "basophils"
+    ],
+    "title": "Understanding white blood cell results",
+    "content": "White blood cells are part of the immune system. A complete blood count can include the total white blood cell count and different white blood cell types such as neutrophils, lymphocytes, monocytes, eosinophils and basophils. Individual results are interpreted using the laboratory's reference range and the overall clinical picture.",
+    "source": "MedlinePlus"
+  },
+  {
+    "id": "platelets",
+    "topic": "Platelet Count",
+    "keywords": [
+      "platelet count",
+      "platelets",
+      "thrombocytes"
+    ],
+    "title": "Understanding platelet count",
+    "content": "Platelets are blood cells that help the body form clots. A platelet count measures the number of platelets in a blood sample. Results outside the laboratory reference range may need to be interpreted alongside other blood-count findings and clinical information.",
+    "source": "MedlinePlus"
+  },
+  {
+    "id": "thyroid",
+    "topic": "Thyroid hormones",
+    "keywords": [
+      "t3",
+      "t3 total",
+      "t4",
+      "t4 total",
+      "thyroid"
+    ],
+    "title": "Understanding thyroid hormone tests",
+    "content": "T3 and T4 are thyroid hormones. Thyroid test results are interpreted together with other thyroid measurements, symptoms and clinical information. A single thyroid hormone result should not be used by itself to establish a diagnosis.",
+    "source": "MedlinePlus"
+  },
+  {
+    "id": "liver_enzymes",
+    "topic": "Liver-related enzymes",
+    "keywords": [
+      "sgot",
+      "ast",
+      "sgpt",
+      "alt",
+      "alkaline phosphatase",
+      "alp",
+      "gamma glutamyl transferase",
+      "ggt"
+    ],
+    "title": "Understanding liver-related enzyme tests",
+    "content": "ALT, AST, alkaline phosphatase and GGT are laboratory measurements that may be included when evaluating liver and related conditions. Abnormal results are interpreted together with other laboratory findings, symptoms and clinical history rather than in isolation.",
+    "source": "MedlinePlus"
+  }
+]

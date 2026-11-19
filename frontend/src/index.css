@@ -1,0 +1,184 @@
+/* ==========================================================================
+   AI Health Report Interpreter - Bright Sky Blue Healthcare Design System
+   ========================================================================== */
+
+:root {
+  /* Brand & Core Palette: Bright Sky Blue Healthcare */
+  --primary-navy: #16324F;
+  --primary-navy-dark: #0F2338;
+  --primary-navy-light: #1E446B;
+
+  /* Sky Blue Core Palette */
+  --sky-blue: #38BDF8;           /* Primary bright sky blue */
+  --sky-blue-secondary: #0EA5E9; /* Secondary blue */
+  --sky-blue-deep: #0284C7;      /* Deep blue */
+  --sky-blue-light: #E0F2FE;     /* Light blue */
+  --sky-blue-subtle: #F0F9FF;    /* Page background */
+  --sky-blue-border: #BAE6FD;    /* Soft blue border */
+
+  /* Compatibility Aliases for components */
+  --teal: #0EA5E9;
+  --teal-hover: #0284C7;
+  --teal-light: #E0F2FE;
+  --teal-subtle: #F0F9FF;
+
+  /* Surfaces & Backgrounds */
+  --bg-main: #F0F9FF;
+  --bg-card: #FFFFFF;
+  --bg-card-hover: #F8FCFF;
+  --bg-subtle: #E0F2FE;
+
+  /* Text & Content - High Contrast Navy */
+  --text-main: #16324F;
+  --text-secondary: #33597D;
+  --text-muted: #5B7A98;
+  --text-inverse: #FFFFFF;
+
+  /* Borders & Dividers */
+  --border: #BAE6FD;
+  --border-subtle: #E0F2FE;
+  --border-focus: #38BDF8;
+
+  /* Medical Status Colors (Strictly Distinct: Green, Red, Orange, Grey) */
+  --success: #16A34A;
+  --success-bg: #DCFCE7;
+  --success-border: #86EFAC;
+  --success-text: #15803D;
+
+  --warning: #D97706;
+  --warning-bg: #FEF3C7;
+  --warning-border: #FCD34D;
+  --warning-text: #B45309;
+
+  --danger: #DC2626;
+  --danger-bg: #FEE2E2;
+  --danger-border: #FCA5A5;
+  --danger-text: #B91C1C;
+
+  --neutral-status: #64748B;
+  --neutral-bg: #F1F5F9;
+  --neutral-border: #CBD5E1;
+  --neutral-text: #475569;
+
+  /* Typography Stack with Indian Language Support */
+  --font-sans: 'Inter', 'Noto Sans', 'Noto Sans Devanagari', 'Noto Sans Telugu',
+    'Noto Sans Tamil', 'Noto Sans Kannada', 'Noto Sans Malayalam',
+    'Noto Sans Bengali', -apple-system, BlinkMacSystemFont, "Segoe UI",
+    Roboto, Helvetica, Arial, sans-serif;
+  --font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+
+  /* Sky-Blue Tuned Shadows */
+  --shadow-xs: 0 1px 2px 0 rgba(2, 132, 199, 0.05);
+  --shadow-sm: 0 2px 5px 0 rgba(2, 132, 199, 0.07), 0 1px 2px -1px rgba(2, 132, 199, 0.05);
+  --shadow-md: 0 4px 12px -2px rgba(2, 132, 199, 0.09), 0 2px 4px -2px rgba(2, 132, 199, 0.05);
+  --shadow-lg: 0 14px 26px -4px rgba(22, 50, 79, 0.1), 0 4px 10px -4px rgba(14, 165, 233, 0.08);
+  --shadow-xl: 0 22px 36px -6px rgba(22, 50, 79, 0.13), 0 8px 16px -6px rgba(14, 165, 233, 0.08);
+  --shadow-glow: 0 0 24px rgba(56, 189, 248, 0.35);
+
+  /* Radii */
+  --radius-sm: 8px;
+  --radius-md: 12px;
+  --radius-lg: 18px;
+  --radius-xl: 24px;
+  --radius-full: 9999px;
+
+  /* Transitions */
+  --transition-fast: 0.15s ease;
+  --transition-normal: 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* Reset & Base Elements */
+*, *::before, *::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html {
+  font-size: 16px;
+  scroll-behavior: smooth;
+  -webkit-text-size-adjust: 100%;
+}
+
+body {
+  font-family: var(--font-sans);
+  background-color: var(--bg-main);
+  color: var(--text-main);
+  line-height: 1.5;
+  letter-spacing: -0.011em;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  min-height: 100vh;
+  position: relative;
+  overflow-x: hidden;
+}
+
+/* Page Background Enhancement: Subtle Sky-Blue Tech Grid + Soft Radial Glows */
+body::before {
+  content: "";
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-image:
+    radial-gradient(circle at 18px 18px, rgba(14, 165, 233, 0.065) 1.5px, transparent 1.5px),
+    radial-gradient(circle at 54px 54px, rgba(2, 132, 199, 0.04) 1.5px, transparent 1.5px);
+  background-size: 72px 72px;
+  pointer-events: none;
+  z-index: 0;
+}
+
+body::after {
+  content: "";
+  position: fixed;
+  top: -160px;
+  right: -120px;
+  width: 680px;
+  height: 680px;
+  background: radial-gradient(circle, rgba(56, 189, 248, 0.14) 0%, rgba(224, 242, 254, 0.08) 50%, transparent 70%);
+  pointer-events: none;
+  z-index: 0;
+  filter: blur(50px);
+}
+
+#root {
+  width: 100%;
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  position: relative;
+  z-index: 1;
+}
+
+button, input, select, textarea {
+  font-family: inherit;
+  font-size: inherit;
+  line-height: inherit;
+}
+
+a {
+  color: inherit;
+  text-decoration: none;
+}
+
+img, svg {
+  display: block;
+  max-width: 100%;
+}
+
+/* Modern Sky-Blue Scrollbar */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+::-webkit-scrollbar-track {
+  background: var(--bg-main);
+}
+::-webkit-scrollbar-thumb {
+  background: #BAE6FD;
+  border-radius: var(--radius-full);
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #38BDF8;
+}
