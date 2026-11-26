@@ -125,16 +125,28 @@ def extract_pdf_with_gemini(file_path, response_language="English"):
         "units, and reference ranges exactly as printed. Translate status_label too; keep status values "
         "as the English tokens low, normal, high, or unknown."
     )
-    response = client.models.generate_content(
-        model=MODEL_NAME,
-        contents=[EXTRACTION_PROMPT + language_prompt,
-                  types.Part.from_bytes(data=pdf_bytes, mime_type="application/pdf")],
-        config=types.GenerateContentConfig(
-            response_mime_type="application/json",
-            response_schema=GeminiPDFExtraction,
-            temperature=0,
-        ),
-    )
+    try:
+        response = client.models.generate_content(
+            model=MODEL_NAME,
+            contents=[EXTRACTION_PROMPT + language_prompt,
+                      types.Part.from_bytes(data=pdf_bytes, mime_type="application/pdf")],
+            config=types.GenerateContentConfig(
+                response_mime_type="application/json",
+                response_schema=GeminiPDFExtraction,
+                temperature=0,
+            ),
+        )
+    except Exception:
+        response = client.models.generate_content(
+            model="gemini-2.5-flash",
+            contents=[EXTRACTION_PROMPT + language_prompt,
+                      types.Part.from_bytes(data=pdf_bytes, mime_type="application/pdf")],
+            config=types.GenerateContentConfig(
+                response_mime_type="application/json",
+                response_schema=GeminiPDFExtraction,
+                temperature=0,
+            ),
+        )
     if not response.text:
         raise ValueError("Gemini returned an empty response")
 
