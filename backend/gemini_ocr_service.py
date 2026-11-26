@@ -107,7 +107,7 @@ def _append_gemini_log(label, content):
 def extract_pdf_with_gemini(file_path, response_language="English"):
     """Return Gemini extraction for scanned PDFs, or None when Gemini is not configured."""
     api_key = os.environ.get("GEMINI_API_KEY", "").strip()
-    if not api_key or not _is_scanned_pdf(file_path):
+    if not api_key:
         return None
 
     from google import genai
@@ -147,12 +147,15 @@ def extract_pdf_with_gemini(file_path, response_language="English"):
     relevant_text = extracted.relevant_text.strip()
 
     if extracted.report_type == "laboratory":
-        if not biomarkers:
-            raise ValueError("Gemini found no readable numeric laboratory results")
-        document_text = "Laboratory report\n" + "\n".join(
-            f"{item['name']}: {item['value']} {item['unit']}"
-            for item in biomarkers
-        )
+        if biomarkers:
+            document_text = "Laboratory report\n" + "\n".join(
+                f"{item['name']}: {item['value']} {item['unit']}"
+                for item in biomarkers
+            )
+        else:
+            document_text = relevant_text or extracted.overall_impression.strip()
+            if not document_text:
+                raise ValueError("Gemini found no readable laboratory content")
     else:
         document_text = relevant_text
         if not document_text:

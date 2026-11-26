@@ -1,52 +1,88 @@
-
-from flask import Flask, request, jsonify
+import os
+import logging
+from flask import Flask, request, jsonify, g
 from flask_cors import CORS
 from werkzeug.utils import secure_filename
-import os
+from dotenv import load_dotenv
 
+# Load backend secrets explicitly from backend/.env
+backend_env_path = os.path.join(os.path.dirname(__file__), ".env")
+load_dotenv(backend_env_path)
+
+from auth import require_auth
 from pdf_service import (
     extract_text_from_pdf,
     extract_structured_pdf
 )
-
 from report_classifier import classify_report
 from biomarker_service import analyze_biomarkers
 from analysis_service import analyze_report
 from imaging_service import analyze_imaging_report
 from gemini_ocr_service import extract_pdf_with_gemini
 from translation_service import normalize_language, SUPPORTED_LANGUAGES
+from supabase_service import (
+    save_report,
+    get_user_reports,
+    get_report_by_id,
+    delete_report,
+)
 
+# Configure server logger
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(levelname)s] %(name)s: %(message)s"
+)
+logger = logging.getLogger("health_interpreter_api")
 
 app = Flask(__name__)
-CORS(app)
 
+# Parse comma-separated authorized origins from CLERK_AUTHORIZED_PARTIES
+raw_azp = os.getenv("CLERK_AUTHORIZED_PARTIES", "http://localhost:5173")
+authorized_origins = [
+    origin.strip() for origin in raw_azp.split(",") if origin.strip()
+] or ["http://localhost:5173"]
 
-UPLOAD_FOLDER = "uploads"
+# Restrict CORS to authorized frontend origins with explicit headers
+CORS(
+    app,
+    resources={r"/*": {"origins": authorized_origins}},
+    allow_headers=["Authorization", "Content-Type"],
+    methods=["GET", "POST", "OPTIONS"],
+    supports_credentials=True
+)
+
+UPLOAD_FOLDER = os.path.join(os.path.dirname(__file__), "uploads")
 ALLOWED_EXTENSIONS = {"pdf"}
 
 app.config["UPLOAD_FOLDER"] = UPLOAD_FOLDER
-
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 
 
 def allowed_file(filename):
     return (
         "." in filename
-        and filename.rsplit(".", 1)[1].lower()
-        in ALLOWED_EXTENSIONS
+        and filename.rsplit(".", 1)[1].lower() in ALLOWED_EXTENSIONS
     )
 
 
 @app.route("/", methods=["GET"])
 def home():
+    """
+    Public backend health check endpoint.
+    """
     return jsonify({
+        "status": "healthy",
         "message": "AI Health Report Interpreter backend is running"
     })
 
 
 @app.route("/upload", methods=["POST"])
+@require_auth
 def upload_report():
-
+    """
+    Protected PDF upload and clinical analysis endpoint.
+    Requires a valid Clerk session token.
+    """
     if "file" not in request.files:
         return jsonify({"error": "No PDF file was uploaded."}), 400
 
@@ -60,10 +96,14 @@ def upload_report():
 
     filename = secure_filename(file.filename)
 
-    file_path = os.path.join(
-        app.config["UPLOAD_FOLDER"],
-        filename
-    )
+    # Use verified Clerk user ID for isolated storage path when available
+    user_id = getattr(g, "user_id", None)
+    if user_id:
+        user_folder = os.path.join(app.config["UPLOAD_FOLDER"], secure_filename(user_id))
+        os.makedirs(user_folder, exist_ok=True)
+        file_path = os.path.join(user_folder, filename)
+    else:
+        file_path = os.path.join(app.config["UPLOAD_FOLDER"], filename)
 
     file.save(file_path)
 
@@ -88,20 +128,9 @@ def upload_report():
                 response_language=response_language
             )
         except Exception as error:
-            if hasattr(error, "errors"):
-                error_details = "; ".join(
-                    "{}: {}".format(
-                        ".".join(str(part) for part in item.get("loc", [])),
-                        item.get("msg", "invalid value")
-                    )
-                    for item in error.errors()
-                )
-            else:
-                error_details = str(error)[:500]
-            print(
-                "Gemini OCR failed; using local extraction:",
-                type(error).__name__,
-                error_details
+            logger.warning(
+                "Gemini OCR fallback triggered. Reason: %s",
+                type(error).__name__
             )
 
         if gemini_extraction:
@@ -115,8 +144,8 @@ def upload_report():
                     and len(gemini_extraction["text"]) < 120)
             )
             if has_incomplete_output:
-                print(
-                    "Gemini OCR output was incomplete; using local extraction."
+                logger.info(
+                    "Gemini OCR output incomplete; falling back to local extraction."
                 )
                 gemini_extraction = None
 
@@ -148,16 +177,12 @@ def upload_report():
         # Separate analysis paths for laboratory and imaging reports.
         if report_type == "imaging":
             report_analysis = analyze_imaging_report(extracted_text, lang=lang)
-
         else:
-            biomarkers = []
-
-            if report_type == "laboratory":
-                biomarkers = (
-                    gemini_extraction["biomarkers"]
-                    if gemini_extraction
-                    else analyze_biomarkers(structured_pdf)
-                )
+            biomarkers = (
+                gemini_extraction["biomarkers"]
+                if gemini_extraction and gemini_extraction.get("biomarkers")
+                else analyze_biomarkers(structured_pdf) if structured_pdf else []
+            )
 
             report_analysis = analyze_report(biomarkers, lang=lang)
             report_analysis["report_type"] = report_type
@@ -166,67 +191,171 @@ def upload_report():
         if gemini_extraction and gemini_extraction.get("overall_impression"):
             report_analysis["impression"] = gemini_extraction["overall_impression"]
 
-        # Debug output
-        print("\n" + "=" * 60)
-        print("REPORT")
-        print("=" * 60)
-        print("Filename:", filename)
-        print("OCR SOURCE:", ocr_source)
-        print("REPORT TYPE:", report_type)
-        print("LANGUAGE:", lang)
-        print("TEXT LENGTH:", len(extracted_text))
-        print("STRUCTURED PAGES:", structured_page_count)
-        print("BIOMARKERS FOUND:", len(report_analysis.get("biomarkers", [])))
-        print("IMAGING FINDINGS:", len(report_analysis.get("findings", [])))
-        print("PATTERNS FOUND:", len(report_analysis.get("patterns", [])))
-        print("KNOWLEDGE ITEMS:", len(report_analysis.get("knowledge", [])))
-        print("DOCTOR QUESTIONS:", len(report_analysis.get("doctor_questions", [])))
+        # Server-side diagnostic metrics without logging report contents or tokens
+        logger.info(
+            "Report processed successfully for user %s | file=%s | ocr=%s | type=%s | lang=%s | biomarkers=%d | findings=%d",
+            user_id or "anonymous",
+            filename,
+            ocr_source,
+            report_type,
+            lang,
+            len(report_analysis.get("biomarkers", [])),
+            len(report_analysis.get("findings", []))
+        )
 
-        for finding in report_analysis.get("findings", []):
-            print(
-                "FINDING:",
-                finding.get("organ"),
-                "|",
-                finding.get("description")
-            )
+        analysis_payload = {
+            "report_type": report_type,
+            "biomarkers": report_analysis.get("biomarkers", []),
+            "findings": report_analysis.get("findings", []),
+            "patterns": report_analysis.get("patterns", []),
+            "impression": report_analysis.get("impression", ""),
+            "concern_level": report_analysis.get("concern_level", {}),
+            "knowledge": report_analysis.get("knowledge", []),
+            "doctor_questions": report_analysis.get("doctor_questions", []),
+        }
 
-        for biomarker in report_analysis.get("biomarkers", []):
-            print(
-                "BIOMARKER:",
-                biomarker.get("name"),
-                "|",
-                biomarker.get("value"),
-                biomarker.get("unit"),
-                "|",
-                biomarker.get("status")
-            )
-
-        print("=" * 60 + "\n")
+        saved_record = None
+        if user_id:
+            try:
+                saved_record = save_report(
+                    user_id=user_id,
+                    filename=filename,
+                    report_type=report_type,
+                    language=lang,
+                    ocr_source=ocr_source,
+                    analysis=analysis_payload,
+                )
+            except Exception as db_error:
+                logger.warning(
+                    "Failed to save report to Supabase: %s",
+                    type(db_error).__name__,
+                )
 
         return jsonify({
             "message": "Report processed successfully",
+            "report_id": saved_record["id"] if saved_record else None,
             "filename": filename,
             "status": "document_processed",
             "language": lang,
-            "analysis": {
-                "report_type": report_type,
-                "biomarkers": report_analysis.get("biomarkers", []),
-                "findings": report_analysis.get("findings", []),
-                "patterns": report_analysis.get("patterns", []),
-                "impression": report_analysis.get("impression", ""),
-                "concern_level": report_analysis.get("concern_level", {}),
-                "knowledge": report_analysis.get("knowledge", []),
-                "doctor_questions": report_analysis.get("doctor_questions", [])
-            }
+            "analysis": analysis_payload,
         })
 
     except Exception as error:
-        print("ERROR WHILE PROCESSING REPORT:", error)
-
+        logger.error(
+            "Server processing error: %s: %s",
+            type(error).__name__,
+            str(error)
+        )
         return jsonify({
             "error": "An error occurred while processing the medical report.",
-            "details": str(error)
+            "message": "Unable to complete report analysis at this time."
         }), 500
+
+
+@app.route("/reports", methods=["GET"])
+@require_auth
+def list_reports():
+    """Return saved report history for the authenticated Clerk user."""
+    user_id = getattr(g, "user_id", None)
+    if not user_id:
+        return jsonify({"error": "Authenticated user ID not found."}), 401
+
+    try:
+        limit = min(int(request.args.get("limit", 20)), 100)
+    except ValueError:
+        limit = 20
+
+    try:
+        reports = get_user_reports(user_id=user_id, limit=limit)
+        return jsonify({"reports": reports})
+    except Exception as error:
+        logger.error("Failed to fetch reports: %s", type(error).__name__)
+        return jsonify({"error": "Unable to fetch report history."}), 500
+
+
+@app.route("/reports/<report_id>", methods=["GET"])
+@require_auth
+def get_report(report_id):
+    """Return a single saved report owned by the authenticated Clerk user."""
+    user_id = getattr(g, "user_id", None)
+    if not user_id:
+        return jsonify({"error": "Authenticated user ID not found."}), 401
+
+    try:
+        report = get_report_by_id(user_id=user_id, report_id=report_id)
+        if not report:
+            return jsonify({"error": "Report not found."}), 404
+        return jsonify({"report": report})
+    except Exception as error:
+        logger.error("Failed to fetch report %s: %s", report_id, type(error).__name__)
+        return jsonify({"error": "Unable to fetch report."}), 500
+
+
+@app.route("/reports/<report_id>", methods=["DELETE"])
+@require_auth
+def remove_report(report_id):
+    """Delete a saved report owned by the authenticated Clerk user."""
+    user_id = getattr(g, "user_id", None)
+    if not user_id:
+        return jsonify({"error": "Authenticated user ID not found."}), 401
+
+    try:
+        deleted = delete_report(user_id=user_id, report_id=report_id)
+        if not deleted:
+            return jsonify({"error": "Report not found."}), 404
+        return jsonify({"message": "Report deleted successfully."})
+    except Exception as error:
+        logger.error("Failed to delete report %s: %s", report_id, type(error).__name__)
+        return jsonify({"error": "Unable to delete report."}), 500
+
+
+@app.route("/ask", methods=["POST"])
+@require_auth
+def ask_about_report():
+    """Interactive AI Assistant endpoint to answer questions about the analyzed report."""
+    data = request.get_json(silent=True) or {}
+    question = (data.get("question") or "").strip()
+    analysis = data.get("analysis") or {}
+    lang = normalize_language((data.get("language") or "en").strip() or "en")
+
+    if not question:
+        return jsonify({"error": "Please enter a question."}), 400
+
+    api_key = os.environ.get("GEMINI_API_KEY", "").strip()
+    if not api_key:
+        return jsonify({"error": "GEMINI_API_KEY is not configured."}), 503
+
+    LANGUAGE_DISPLAY_NAMES = {
+        "en": "English", "hi": "Hindi", "te": "Telugu",
+        "ta": "Tamil", "kn": "Kannada", "ml": "Malayalam",
+        "mr": "Marathi", "bn": "Bengali",
+    }
+    response_language = LANGUAGE_DISPLAY_NAMES.get(lang, "English")
+
+    try:
+        from google import genai
+        from gemini_ocr_service import MODEL_NAME
+        import json
+
+        client = genai.Client(api_key=api_key)
+        prompt = (
+            f"You are a helpful, empathetic clinical AI assistant. "
+            f"Answer the user's question about their medical report in {response_language} using simple, clear language. "
+            f"Do not diagnose; recommend consulting a doctor for medical decisions.\n\n"
+            f"Report Analysis:\n{json.dumps(analysis, ensure_ascii=False)[:6000]}\n\n"
+            f"User Question: {question}"
+        )
+        response = client.models.generate_content(
+            model=MODEL_NAME,
+            contents=prompt,
+        )
+        answer = (response.text or "").strip()
+        if not answer:
+            return jsonify({"error": "No response generated."}), 502
+        return jsonify({"answer": answer})
+    except Exception as error:
+        logger.error("AI Assistant error: %s: %s", type(error).__name__, str(error))
+        return jsonify({"error": "Unable to answer right now. Please try again."}), 500
 
 
 if __name__ == "__main__":

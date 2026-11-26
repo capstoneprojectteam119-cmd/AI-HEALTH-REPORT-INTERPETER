@@ -5,7 +5,7 @@ import { getTranslations, getStatusText, LANGUAGES } from "./translations";
 import { clerkTheme } from "./clerkTheme";
 
 function App() {
-  const { getToken } = useAuth();
+  const { getToken, isSignedIn } = useAuth();
   const [file, setFile] = useState(null);
   const [language, setLanguage] = useState(() => {
     return localStorage.getItem("preferred_language") || "en";
@@ -15,6 +15,19 @@ function App() {
   const [analysis, setAnalysis] = useState(null);
   const [biomarkerFilter, setBiomarkerFilter] = useState("all");
   const [isDragging, setIsDragging] = useState(false);
+  const [bookmarks, setBookmarks] = useState(() => {
+    try {
+      const raw = localStorage.getItem("saved_report_bookmarks");
+      return raw ? JSON.parse(raw) : [];
+    } catch {
+      return [];
+    }
+  });
+  const [showBookmarks, setShowBookmarks] = useState(false);
+  const [activeReportName, setActiveReportName] = useState("");
+  const [chatMessages, setChatMessages] = useState([]);
+  const [chatInput, setChatInput] = useState("");
+  const [chatLoading, setChatLoading] = useState(false);
 
   const fileInputRef = useRef(null);
 
@@ -25,6 +38,91 @@ function App() {
   useEffect(() => {
     localStorage.setItem("preferred_language", language);
   }, [language]);
+
+  // Persist local bookmarks on device
+  useEffect(() => {
+    try {
+      localStorage.setItem("saved_report_bookmarks", JSON.stringify(bookmarks));
+    } catch {
+      // Ignore storage quota errors
+    }
+  }, [bookmarks]);
+
+  const currentBookmarkId = useMemo(() => {
+    if (!analysis) return null;
+    const name = activeReportName || file?.name || "Medical Report";
+    const found = bookmarks.find(
+      (b) => b.filename === name && b.language === language
+    );
+    return found ? found.id : null;
+  }, [analysis, activeReportName, file, bookmarks, language]);
+
+  const handleSaveBookmark = () => {
+    if (!analysis) return;
+    const name = activeReportName || file?.name || "Medical Report";
+    if (currentBookmarkId) {
+      setBookmarks((prev) => prev.filter((b) => b.id !== currentBookmarkId));
+      return;
+    }
+    const newBookmark = {
+      id: `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+      filename: name,
+      language,
+      savedAt: new Date().toISOString(),
+      analysis,
+    };
+    setBookmarks((prev) => [newBookmark, ...prev]);
+  };
+
+  const handleLoadBookmark = (bookmark) => {
+    setLanguage(bookmark.language || "en");
+    setAnalysis(bookmark.analysis);
+    setActiveReportName(bookmark.filename);
+    setBiomarkerFilter("all");
+    setShowBookmarks(false);
+    setMessage(`Loaded saved bookmark: ${bookmark.filename}`);
+  };
+
+  const handleDeleteBookmark = (id) => {
+    setBookmarks((prev) => prev.filter((b) => b.id !== id));
+  };
+
+  const handleAskQuestion = async () => {
+    const question = chatInput.trim();
+    if (!question || !analysis || chatLoading) return;
+
+    setChatMessages((prev) => [...prev, { role: "user", text: question }]);
+    setChatInput("");
+    setChatLoading(true);
+
+    try {
+      let token = null;
+      if (typeof getToken === "function") {
+        token = await getToken({ skipCache: true });
+      }
+      const apiBase = import.meta.env.VITE_API_URL || "http://127.0.0.1:5000";
+      const response = await fetch(`${apiBase}/ask`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify({ question, analysis, language }),
+      });
+      const data = await response.json();
+      if (!response.ok) {
+        throw new Error(data.error || "Failed to get answer.");
+      }
+      setChatMessages((prev) => [...prev, { role: "bot", text: data.answer }]);
+    } catch (err) {
+      setChatMessages((prev) => [
+        ...prev,
+        { role: "bot", text: err.message || "Unable to answer right now." },
+      ]);
+    } finally {
+      setChatLoading(false);
+    }
+  };
 
   const isImaging = analysis?.report_type === "imaging";
 
@@ -73,34 +171,74 @@ function App() {
     }
   };
 
-  const handleUpload = async () => {
+  const handleUpload = async (overrideLanguage) => {
     if (!file) {
       setMessage(t.selectPdfFirst);
       return;
     }
 
+    if (!isSignedIn) {
+      setMessage(t.authRequired || "Authentication required. Please sign in to analyze reports.");
+      return;
+    }
+
+    const targetLanguage =
+      typeof overrideLanguage === "string" ? overrideLanguage : language;
+
     setLoading(true);
     setMessage("");
     setAnalysis(null);
+    setActiveReportName(file.name);
 
     const formData = new FormData();
     formData.append("file", file);
-    formData.append("language", language);
+    formData.append("language", targetLanguage);
 
     try {
       let token = null;
       try {
         if (typeof getToken === "function") {
-          token = await getToken();
+          token = await getToken({ skipCache: true });
         }
       } catch (tokenErr) {
         console.warn("Could not retrieve Clerk session token:", tokenErr);
       }
 
-      const headers = {};
+      // Safe temporary diagnostics (no sensitive token data or credentials logged)
       if (token) {
-        headers["Authorization"] = `Bearer ${token}`;
+        try {
+          const browserUnixSeconds = Math.floor(Date.now() / 1000);
+          const payloadBase64 = token.split(".")[1];
+          if (payloadBase64) {
+            const rawPayload = JSON.parse(atob(payloadBase64.replace(/-/g, "+").replace(/_/g, "/")));
+            const tokenIat = rawPayload.iat;
+            const tokenExp = rawPayload.exp;
+            const isExpiredBeforeSend = typeof tokenExp === "number" ? browserUnixSeconds > tokenExp : null;
+            const remainingSeconds = typeof tokenExp === "number" ? tokenExp - browserUnixSeconds : null;
+
+            console.log("[Auth Diagnostic] Browser Unix timestamp:", browserUnixSeconds);
+            console.log("[Auth Diagnostic] Token timestamps:", { iat: tokenIat, exp: tokenExp });
+            console.log(
+              "[Auth Diagnostic] Is token expired before upload sent:",
+              isExpiredBeforeSend,
+              `(diff: ${remainingSeconds}s)`
+            );
+          }
+        } catch (diagErr) {
+          console.warn("[Auth Diagnostic] Could not decode timestamps:", diagErr);
+        }
       }
+
+      // Do not send unauthenticated requests to the backend
+      if (!token) {
+        setMessage(t.authRequired || "Authentication required. Please sign in to analyze reports.");
+        setLoading(false);
+        return;
+      }
+
+      const headers = {
+        Authorization: `Bearer ${token}`,
+      };
 
       const response = await fetch(
         "http://127.0.0.1:5000/upload",
@@ -213,13 +351,35 @@ function App() {
           </div>
 
           <div className="header-actions">
+            <button
+              type="button"
+              onClick={() => setShowBookmarks((prev) => !prev)}
+              className="language-select"
+              style={{
+                cursor: "pointer",
+                padding: "8px 14px",
+                borderRadius: "999px",
+                border: "1px solid #cbd5e1",
+                background: showBookmarks ? "#eff6ff" : "#ffffff",
+                fontWeight: 600,
+              }}
+            >
+              🔖 Bookmarks ({bookmarks.length})
+            </button>
+
             <div className="language-dropdown-wrapper">
               <span className="lang-icon" aria-hidden="true">🌐</span>
               <select
                 id="language"
                 aria-label={t.languageLabel || "Language selector"}
                 value={language}
-                onChange={(event) => setLanguage(event.target.value)}
+                onChange={(event) => {
+                  const newLang = event.target.value;
+                  setLanguage(newLang);
+                  if (file && analysis && !loading) {
+                    handleUpload(newLang);
+                  }
+                }}
                 className="language-select"
               >
                 {LANGUAGES.map((lang) => (
@@ -237,6 +397,97 @@ function App() {
           </div>
         </div>
       </header>
+
+      {showBookmarks && (
+        <section
+          style={{
+            maxWidth: "1100px",
+            margin: "16px auto 0",
+            padding: "16px 20px",
+            background: "#ffffff",
+            border: "1px solid #e2e8f0",
+            borderRadius: "16px",
+            boxShadow: "0 4px 16px rgba(15, 23, 42, 0.06)",
+          }}
+        >
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "12px" }}>
+            <h3 style={{ margin: 0, fontSize: "16px", fontWeight: 700 }}>
+              🔖 Saved Bookmarks on This Device ({bookmarks.length})
+            </h3>
+            <button
+              type="button"
+              onClick={() => setShowBookmarks(false)}
+              style={{ border: "none", background: "transparent", cursor: "pointer", fontSize: "16px" }}
+            >
+              ✕
+            </button>
+          </div>
+          {bookmarks.length === 0 ? (
+            <p style={{ margin: 0, color: "#64748b", fontSize: "14px" }}>
+              No saved reports yet. Analyze a report and click "Save to Bookmarks" to store it on your device.
+            </p>
+          ) : (
+            <div style={{ display: "grid", gap: "10px" }}>
+              {bookmarks.map((bm) => (
+                <div
+                  key={bm.id}
+                  style={{
+                    display: "flex",
+                    justifyContent: "space-between",
+                    alignItems: "center",
+                    padding: "10px 14px",
+                    borderRadius: "10px",
+                    background: "#f8fafc",
+                    border: "1px solid #e2e8f0",
+                    gap: "12px",
+                  }}
+                >
+                  <div>
+                    <div style={{ fontWeight: 600, fontSize: "14px", color: "#0f172a" }}>
+                      {bm.filename}
+                    </div>
+                    <div style={{ fontSize: "12px", color: "#64748b" }}>
+                      Language: {bm.language?.toUpperCase()} • Saved {new Date(bm.savedAt).toLocaleString()}
+                    </div>
+                  </div>
+                  <div style={{ display: "flex", gap: "8px" }}>
+                    <button
+                      type="button"
+                      onClick={() => handleLoadBookmark(bm)}
+                      style={{
+                        padding: "6px 12px",
+                        borderRadius: "8px",
+                        border: "none",
+                        background: "#0ea5e9",
+                        color: "#ffffff",
+                        fontWeight: 600,
+                        cursor: "pointer",
+                      }}
+                    >
+                      Open
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleDeleteBookmark(bm.id)}
+                      style={{
+                        padding: "6px 10px",
+                        borderRadius: "8px",
+                        border: "1px solid #fecaca",
+                        background: "#fef2f2",
+                        color: "#dc2626",
+                        fontWeight: 600,
+                        cursor: "pointer",
+                      }}
+                    >
+                      Delete
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </section>
+      )}
 
 
       {/* ========================================================
@@ -525,13 +776,31 @@ function App() {
           </div>
 
           {analysis && (
-            <div className="report-type-badge">
-              <span className="report-type-icon">{isImaging ? "🩻" : "🧪"}</span>
-              <span className="report-type-text">
-                {analysis.report_type === "imaging"
-                  ? (t.imagingReport || "Imaging Diagnostic Scan")
-                  : (t.labReport || "Laboratory Analysis Report")}
-              </span>
+            <div style={{ display: "flex", alignItems: "center", gap: "10px", flexWrap: "wrap" }}>
+              <button
+                type="button"
+                onClick={handleSaveBookmark}
+                style={{
+                  padding: "8px 14px",
+                  borderRadius: "999px",
+                  border: currentBookmarkId ? "1px solid #0284c7" : "1px solid #cbd5e1",
+                  background: currentBookmarkId ? "#e0f2fe" : "#ffffff",
+                  color: currentBookmarkId ? "#0369a1" : "#0f172a",
+                  fontWeight: 600,
+                  cursor: "pointer",
+                  fontSize: "13px",
+                }}
+              >
+                {currentBookmarkId ? "🔖 Saved on Device" : "🔖 Save to Bookmarks"}
+              </button>
+              <div className="report-type-badge">
+                <span className="report-type-icon">{isImaging ? "🩻" : "🧪"}</span>
+                <span className="report-type-text">
+                  {analysis.report_type === "imaging"
+                    ? (t.imagingReport || "Imaging Diagnostic Scan")
+                    : (t.labReport || "Laboratory Analysis Report")}
+                </span>
+              </div>
             </div>
           )}
         </div>
@@ -989,14 +1258,52 @@ function App() {
                 </div>
               </div>
 
+              {chatMessages.map((msg, idx) => (
+                <div
+                  key={idx}
+                  className="bot-bubble"
+                  style={{
+                    justifyContent: msg.role === "user" ? "flex-end" : "flex-start",
+                  }}
+                >
+                  {msg.role === "bot" && <span className="bot-avatar">🤖</span>}
+                  <div
+                    className="bubble-content"
+                    style={{
+                      background: msg.role === "user" ? "#0ea5e9" : undefined,
+                      color: msg.role === "user" ? "#ffffff" : undefined,
+                    }}
+                  >
+                    {msg.text}
+                  </div>
+                </div>
+              ))}
+
+              {chatLoading && (
+                <div className="bot-bubble">
+                  <span className="bot-avatar">🤖</span>
+                  <div className="bubble-content">Thinking...</div>
+                </div>
+              )}
+
               <div className="chat-input-bar">
                 <input
                   type="text"
                   placeholder={t.chatPlaceholder}
-                  disabled
+                  value={chatInput}
+                  onChange={(e) => setChatInput(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") handleAskQuestion();
+                  }}
+                  disabled={!analysis || chatLoading}
                   aria-label="Ask medical report question"
                 />
-                <button disabled className="btn-chat-send">
+                <button
+                  type="button"
+                  onClick={handleAskQuestion}
+                  disabled={!analysis || chatLoading || !chatInput.trim()}
+                  className="btn-chat-send"
+                >
                   {t.sendButton}
                 </button>
               </div>
