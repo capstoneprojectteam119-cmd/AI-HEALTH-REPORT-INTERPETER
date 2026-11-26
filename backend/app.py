@@ -227,8 +227,9 @@ def upload_report():
                 )
             except Exception as db_error:
                 logger.warning(
-                    "Failed to save report to Supabase: %s",
+                    "Failed to save report to Supabase: %s: %s",
                     type(db_error).__name__,
+                    str(db_error),
                 )
 
         return jsonify({
